@@ -20,6 +20,15 @@ We establish three empirical contributions:
 
 ---
 
+## Overview of Dynamic Mechanistic Forensics
+
+| Dynamic Probe Trajectory & Bifurcation Point | Causal Steering Multiplier Sweep vs Control |
+| :---: | :---: |
+| ![Bifurcation Point Dynamic Scan](results/figures/bifurcation_probe_dynamics.gif) | ![Causal Steering Sweep Animation](results/figures/causal_steering_sweep.gif) |
+| *Residual stream latent truth peak (L12-L20) vs late-layer override (L22-L28)* | *Causal recovery at alpha = +1.0 vs flat random Gaussian control vector* |
+
+---
+
 ## Key Experimental Findings
 
 ### 1. Behavioral Collapse Under Misleading Priors
