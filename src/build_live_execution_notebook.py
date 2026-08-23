@@ -99,37 +99,49 @@ def build_live_notebook():
     ]))
 
     # -------------------------------------------------------------
-    # 3. LIVE MODEL LOADER
+    # 3. LIVE MODEL LOADER WITH COLAB 7B/8B SELECTOR
     # -------------------------------------------------------------
     cells.append(create_cell("markdown", [
-        "## 2. Real-Time Model & Tokenizer Loader",
+        "## 2. Model Selection (Optimized for Google Colab GPU & Local Hardware)",
         "",
-        "We instantiate `deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B`. If running on constrained environments, the loader automatically adapts precision."
+        "Select your target reasoning model below. For Google Colab (T4 / A100 / V100 GPU), we recommend **`DeepSeek-R1-Distill-Qwen-7B`** or **`DeepSeek-R1-Distill-Llama-8B`** for maximum reasoning fidelity.",
+        "",
+        "| Model Identifier | Architecture | Parameters | Recommended Hardware |",
+        "| :--- | :---: | :---: | :--- |",
+        "| **`deepseek-ai/DeepSeek-R1-Distill-Qwen-7B`** | Qwen2.5 | 7.6B (28 Layers, $d=3584$) | **Google Colab GPU (T4/V100/A100)** |",
+        "| **`deepseek-ai/DeepSeek-R1-Distill-Llama-8B`** | LLaMA 3.1 | 8.0B (32 Layers, $d=4096$) | **Google Colab GPU (T4/V100/A100)** |",
+        "| **`deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B`** | Qwen2.5 | 1.5B (28 Layers, $d=1536$) | Local Mac MPS / Laptop GPU |"
     ]))
 
     cells.append(create_cell("code", [
         "# =============================================================================",
-        "# 2. LIVE MODEL LOADING",
+        "# 2. INTERACTIVE MODEL SELECTOR & WEIGHT LOADER",
         "# =============================================================================",
-        "MODEL_NAME = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'",
+        "# Choose your model (Uncomment desired model):",
+        "# MODEL_NAME = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'   # 7B SOTA Reasoning (Colab GPU)",
+        "# MODEL_NAME = 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B'  # 8B SOTA Reasoning (Colab GPU)",
+        "MODEL_NAME = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'  # 1.5B Fast Execution (Local / Colab)",
         "",
-        "print(f\"[Loader] Initializing Tokenizer for {MODEL_NAME}...\")",
+        "print(f\"[Loader] Initializing Tokenizer for: {MODEL_NAME}...\")",
         "tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)",
         "if tokenizer.pad_token is None:",
         "    tokenizer.pad_token = tokenizer.eos_token",
         "",
-        "print(f\"[Loader] Loading Transformer Weights on {DEVICE} ({DTYPE})...\")",
+        "print(f\"[Loader] Loading Model Weights into {DEVICE} with {DTYPE}...\")",
         "model = AutoModelForCausalLM.from_pretrained(",
         "    MODEL_NAME,",
         "    torch_dtype=DTYPE,",
-        "    device_map=None,",
+        "    device_map='auto' if torch.cuda.is_available() else None,",
         "    trust_remote_code=True",
-        ").to(DEVICE)",
+        ")",
+        "if not torch.cuda.is_available() and hasattr(model, 'to'):",
+        "    model = model.to(DEVICE)",
         "model.eval()",
         "",
         "n_layers = model.config.num_hidden_layers",
         "hidden_dim = model.config.hidden_size",
-        "print(f\"[Loaded] Model Architecture: {n_layers} Decoder Layers | Hidden Dim: {hidden_dim}\")"
+        "print(f\"[Loaded Successfully] Model: {MODEL_NAME}\")",
+        "print(f\"Architecture Config: {n_layers} Transformer Layers | Hidden Dimension d = {hidden_dim}\")"
     ]))
 
     # -------------------------------------------------------------

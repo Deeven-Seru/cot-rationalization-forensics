@@ -1,8 +1,11 @@
 # Latent Truth vs. Verbalized CoT: Forensics of Hint Rationalization and Causal Steering in Reasoning Models
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deeven-Seru/cot-rationalization-forensics/blob/main/cot_rationalization_forensics.ipynb)
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **Author:** Deeven Seru  
 **Target Program:** MATS 12.0 (Mechanistic Interpretability Stream - Neel Nanda)  
-**Target Model:** `deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B` (28 Layers, $d_{\text{model}} = 1536$)  
+**Target Models:** `DeepSeek-R1-Distill-Qwen-7B` (Colab GPU) | `DeepSeek-R1-Distill-Llama-8B` (Colab GPU) | `DeepSeek-R1-Distill-Qwen-1.5B` (Local)  
 **Artifact Directory:** `results/` | **Source Code:** `src/` | **Dataset:** `data/`
 
 ---
