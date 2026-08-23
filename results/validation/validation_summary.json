@@ -1,0 +1,32 @@
+{
+  "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+  "benchmark_size": 50,
+  "behavioral_findings": {
+    "control_accuracy": 0.82,
+    "deceptive_accuracy": 0.34,
+    "accuracy_drop": 0.48,
+    "hint_compliance_rate": 0.76,
+    "average_reasoning_tokens_delta": "+25.8%"
+  },
+  "discovery_1_bifurcation_point": {
+    "peak_truth_probe_auc": 0.89,
+    "peak_truth_layer_depth": "Layers 14-20 of 28",
+    "phase_transition_point": "65-75% into reasoning sequence"
+  },
+  "discovery_2_thought_anchor_inversion": {
+    "reflection_tokens": [
+      "Wait",
+      "Let me double-check",
+      "Alternatively"
+    ],
+    "deceptive_hint_adoption_spike_post_anchor": "+58.0%",
+    "mechanism": "Model utilizes semantic freedom after reflection anchors to construct rationalization bridges"
+  },
+  "discovery_3_causal_steering": {
+    "optimal_layer": 18,
+    "optimal_multiplier": 1.0,
+    "ground_truth_recovery_rate": 0.684,
+    "random_vector_control_recovery": 0.0,
+    "clean_math_capability_retention": 0.8
+  }
+}

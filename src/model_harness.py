@@ -2,9 +2,10 @@
 Model Harness & Residual Stream Activation Hook Engine.
 Provides:
 1. Device-aware model loading (Apple Silicon MPS / CUDA / CPU)
-2. Non-invasive PyTorch forward hooks to record residual stream activations
-3. Causal activation steering / ablation injection hooks
-4. Robust parsing for reasoning models (extracting <think>...</think> CoT and final answers)
+2. Proper Chat Template Formatting for DeepSeek-R1 (<｜User｜> ... <｜Assistant｜><think>)
+3. Non-invasive PyTorch forward hooks to record residual stream activations
+4. Causal activation steering / ablation injection hooks
+5. Robust parsing for reasoning models (extracting <think>...</think> CoT and final answers)
 """
 
 import re
@@ -40,12 +41,10 @@ class SteeringHook:
             hidden_states = output
             rest = ()
             
-        # Add steering vector across sequence positions
-        # Find which layer this hook is attached to via module metadata or dict matching
         for layer_idx, vec in self.steering_vectors.items():
             if vec.device != hidden_states.device:
                 vec = vec.to(hidden_states.device)
-            # Add vector to the latest token or all sequence tokens
+            # Add vector across sequence
             hidden_states = hidden_states + (self.multiplier * vec.unsqueeze(0).unsqueeze(0))
             
         if rest:
@@ -57,7 +56,7 @@ class ReasoningInterpHarness:
         self, 
         model_name: str = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
         device: Optional[str] = None,
-        torch_dtype: torch.dtype = torch.bfloat16
+        dtype: torch.dtype = torch.bfloat16
     ):
         self.model_name = model_name
         
@@ -72,28 +71,27 @@ class ReasoningInterpHarness:
         else:
             self.device = device
             
-        print(f"Loading {self.model_name} on {self.device} with {torch_dtype}...")
+        print(f"Loading {self.model_name} on {self.device} with {dtype}...", flush=True)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype=torch_dtype,
+            torch_dtype=dtype,
             trust_remote_code=True
         ).to(self.device)
         self.model.eval()
         
         self.num_layers = self._get_num_layers()
         self.hidden_dim = self._get_hidden_dim()
-        print(f"Model loaded successfully! Layers: {self.num_layers}, Hidden Dim: {self.hidden_dim}")
+        print(f"Model loaded! Layers: {self.num_layers}, Hidden Dim: {self.hidden_dim}", flush=True)
         
         self.cache = ActivationCache()
         self._hook_handles = []
         self._steering_handles = []
 
     def _get_layers_module(self) -> nn.ModuleList:
-        """Returns the module list of transformer decoder layers."""
         if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
             return self.model.model.layers
         elif hasattr(self.model, "transformer") and hasattr(self.model.transformer, "h"):
@@ -107,44 +105,43 @@ class ReasoningInterpHarness:
     def _get_hidden_dim(self) -> int:
         return self.model.config.hidden_size
 
+    def format_chat_prompt(self, user_content: str) -> str:
+        """Applies chat template if available, ensuring proper <think> initiation."""
+        messages = [{"role": "user", "content": user_content}]
+        if hasattr(self.tokenizer, "apply_chat_template") and self.tokenizer.chat_template is not None:
+            return self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        return f"<｜User｜>{user_content}<｜Assistant｜><think>\n"
+
     def register_recording_hooks(self, layer_indices: Optional[List[int]] = None):
-        """Attaches hooks to record residual stream outputs from specified layers."""
         self.remove_hooks()
         layers = self._get_layers_module()
         
         if layer_indices is None:
-            # Default to tracking every 4th layer + final layer for memory efficiency
             layer_indices = list(range(0, self.num_layers, max(1, self.num_layers // 6)))
             if (self.num_layers - 1) not in layer_indices:
                 layer_indices.append(self.num_layers - 1)
                 
         for idx in layer_indices:
             layer = layers[idx]
-            
             def make_hook(l_idx):
                 def hook_fn(module, inp, out):
                     hidden = out[0] if isinstance(out, tuple) else out
                     if l_idx not in self.cache.activations:
                         self.cache.activations[l_idx] = []
-                    # Detach and move to CPU to preserve GPU memory during generation
                     self.cache.activations[l_idx].append(hidden.detach().cpu())
                 return hook_fn
-                
             handle = layer.register_forward_hook(make_hook(idx))
             self._hook_handles.append(handle)
 
     def attach_steering_hook(self, layer_idx: int, steering_vector: torch.Tensor, multiplier: float = 1.0):
-        """Attaches a causal steering hook to inject vector during generation."""
         layers = self._get_layers_module()
         target_layer = layers[layer_idx]
-        
         hook = SteeringHook({layer_idx: steering_vector}, multiplier=multiplier)
         handle = target_layer.register_forward_hook(hook)
         self._steering_handles.append(handle)
         return hook
 
     def remove_hooks(self):
-        """Removes all recording and steering hooks."""
         for handle in self._hook_handles:
             handle.remove()
         for handle in self._steering_handles:
@@ -156,16 +153,16 @@ class ReasoningInterpHarness:
     def generate_with_cache(
         self, 
         prompt: str, 
-        max_new_tokens: int = 512,
-        temperature: float = 0.6,
+        max_new_tokens: int = 450,
+        temperature: float = 0.0,
         record_activations: bool = False
     ) -> Dict[str, Any]:
-        """Generates reasoning response and optionally records residual stream activations."""
         self.cache.clear()
         if record_activations:
             self.register_recording_hooks()
             
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        formatted_prompt = self.format_chat_prompt(prompt)
+        inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.device)
         prompt_len = inputs.input_ids.shape[1]
         
         with torch.no_grad():
@@ -180,13 +177,13 @@ class ReasoningInterpHarness:
             
         raw_output_text = self.tokenizer.decode(outputs[0], skip_special_tokens=False)
         generated_tokens = outputs[0][prompt_len:]
-        completion_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        completion_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=False)
         
-        # Parse reasoning structure
         cot, final_answer = self.parse_reasoning_output(completion_text)
         
         result = {
             "prompt": prompt,
+            "formatted_prompt": formatted_prompt,
             "full_text": raw_output_text,
             "completion": completion_text,
             "cot": cot,
@@ -202,26 +199,22 @@ class ReasoningInterpHarness:
 
     @staticmethod
     def parse_reasoning_output(text: str) -> Tuple[str, str]:
-        """Extracts <think>...</think> block and the final extracted answer string."""
-        think_match = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL)
+        think_match = re.search(r"<think>(.*?)(?:</think>|$)", text, flags=re.DOTALL)
         if think_match:
             cot = think_match.group(1).strip()
-            remaining = text[think_match.end():].strip()
+            remaining = text[think_match.end():].strip() if "</think>" in text else cot
         else:
-            cot = ""
+            cot = text
             remaining = text.strip()
             
-        # Look for standard boxed answers or explicit 'The answer is X'
-        boxed_match = re.findall(r"\\boxed\{(.*?)\}", remaining)
+        boxed_match = re.findall(r"\\boxed\{(.*?)\}", text)
         if boxed_match:
             final_ans = boxed_match[-1].strip()
         else:
-            # Fallback: extract last numeric token or sentence
-            ans_match = re.findall(r"(?:answer is|equals|result is|=|is)\s*[:\$]?\s*([0-9\.\,\-]+)", remaining, flags=re.IGNORECASE)
+            ans_match = re.findall(r"(?:answer is|equals|result is|=|is)\s*[:\$]?\s*([0-9\.\,\-]+)", text, flags=re.IGNORECASE)
             if ans_match:
                 final_ans = ans_match[-1].strip().replace(",", "")
             else:
-                # Last number in text
                 numbers = re.findall(r"[-+]?\d*\.?\d+", remaining)
                 final_ans = numbers[-1] if numbers else remaining[:50]
                 
