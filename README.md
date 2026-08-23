@@ -160,18 +160,24 @@ cot-rationalization-forensics/
 
 ---
 
+## Single Standalone Reproduction Notebook
+
+For an end-to-end, zero-setup walkthrough with interactive code, mathematical derivations, and inline visualizations, open the self-contained notebook:
+
+[![Jupyter Notebook](https://img.shields.io/badge/Reproduction-Jupyter%20Notebook-orange?logo=jupyter)](cot_rationalization_forensics.ipynb)
+**`cot_rationalization_forensics.ipynb`**
+
+---
+
 ## Reproduction Instructions
 
-### 1. Environment Setup
+### 1. Interactive Notebook Execution
+Run the standalone notebook locally or in Google Colab / Kaggle:
 ```bash
-git clone https://github.com/Deeven-Seru/cot-rationalization-forensics.git
-cd cot-rationalization-forensics
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+jupyter notebook cot_rationalization_forensics.ipynb
 ```
 
-### 2. Dataset Generation
+### 2. Command Line Pipeline Execution
 ```bash
 python3 data/generate_dataset.py
 ```
